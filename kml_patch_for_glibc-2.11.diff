@@ -1,0 +1,882 @@
+diff -urN glibc-2.11.orig/elf/rtld.c glibc-2.11/elf/rtld.c
+--- glibc-2.11.orig/elf/rtld.c	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/elf/rtld.c	2009-12-06 02:07:01.000000000 +0900
+@@ -1372,8 +1372,10 @@
+ 	  /* We have a prelinked DSO preloaded by the system.  */
+ 	  GLRO(dl_sysinfo_map) = l;
+ # ifdef NEED_DL_SYSINFO
++#  if !defined __x86_64__
+ 	  if (GLRO(dl_sysinfo) == DL_SYSINFO_DEFAULT)
+ 	    GLRO(dl_sysinfo) = GLRO(dl_sysinfo_dso)->e_entry + l->l_addr;
++#  endif
+ # endif
+ 	}
+     }
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/dl-sysdep.h glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/dl-sysdep.h
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/dl-sysdep.h	1970-01-01 09:00:00.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/dl-sysdep.h	2009-12-06 02:07:01.000000000 +0900
+@@ -0,0 +1,69 @@
++/* System-specific settings for dynamic linker code.  AMD64 version.
++   Copyright (C) 2002, 2003 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef _DL_SYSDEP_H
++#define _DL_SYSDEP_H	1
++
++/* This macro must be defined to either 0 or 1.
++
++   If 1, then an errno global variable hidden in ld.so will work right with
++   all the errno-using libc code compiled for ld.so, and there is never a
++   need to share the errno location with libc.  This is appropriate only if
++   all the libc functions that ld.so uses are called without PLT and always
++   get the versions linked into ld.so rather than the libc ones.  */
++
++#ifdef IS_IN_rtld
++# define RTLD_PRIVATE_ERRNO 1
++#else
++# define RTLD_PRIVATE_ERRNO 0
++#endif
++
++/* Traditionally system calls have been made using int $0x80.  A
++   second method was introduced which, if possible, will use the
++   sysenter/syscall instructions.  To signal the presence and where to
++   find the code the kernel passes an AT_SYSINFO value in the
++   auxiliary vector to the application.  */
++#define NEED_DL_SYSINFO	1
++#define USE_DL_SYSINFO	1
++
++#if defined NEED_DL_SYSINFO && !defined __ASSEMBLER__
++extern void _dl_sysinfo_syscall (void) attribute_hidden;
++# define DL_SYSINFO_DEFAULT (uintptr_t) _dl_sysinfo_syscall
++# define DL_SYSINFO_IMPLEMENTATION \
++  asm (".text\n\t"							      \
++       ".type _dl_sysinfo_syscall,@function\n\t"			      \
++       ".hidden _dl_sysinfo_syscall\n"					      \
++       CFI_STARTPROC "\n"						      \
++       "_dl_sysinfo_syscall:\n\t"					      \
++       "syscall;\n\t"							      \
++       "ret;\n\t"							      \
++       CFI_ENDPROC "\n"							      \
++       ".size _dl_sysinfo_syscall,.-_dl_sysinfo_syscall\n\t"		      \
++       ".previous");
++#endif
++
++/* The _dl_discover_osversion function is so far only needed in sysconf
++   to check for kernels later than 2.6.23.  */
++#if !defined __ASSEMBLER__ && __LINUX_KERNEL_VERSION < 0x020617
++/* Get version of the OS.  */
++extern int _dl_discover_osversion (void) attribute_hidden;
++# define HAVE_DL_DISCOVER_OSVERSION     1
++#endif
++
++#endif	/* dl-sysdep.h */
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.h glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.h
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.h	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.h	2009-12-06 02:07:01.000000000 +0900
+@@ -26,6 +26,7 @@
+ # include <bits/pthreadtypes.h>
+ # include <kernel-features.h>
+ # include <tcb-offsets.h>
++# include <sysdep.h>
+ 
+ # ifndef LOCK_INSTR
+ #  ifdef UP
+@@ -213,7 +214,7 @@
+     register const struct timespec *__to __asm ("r10") = timeout;	      \
+     int __status;							      \
+     register __typeof (val) _val __asm ("edx") = (val);			      \
+-    __asm __volatile ("syscall"						      \
++    __asm __volatile (STR_ENTER_KERNEL					      \
+ 		      : "=a" (__status)					      \
+ 		      : "0" (SYS_futex), "D" (futex),			      \
+ 			"S" (__lll_private_flag (FUTEX_WAIT, private)),	      \
+@@ -227,7 +228,7 @@
+   do {									      \
+     int __ignore;							      \
+     register __typeof (nr) _nr __asm ("edx") = (nr);			      \
+-    __asm __volatile ("syscall"						      \
++    __asm __volatile (STR_ENTER_KERNEL					      \
+ 		      : "=a" (__ignore)					      \
+ 		      : "0" (SYS_futex), "D" (futex),			      \
+ 			"S" (__lll_private_flag (FUTEX_WAKE, private)),	      \
+@@ -530,7 +531,7 @@
+     {									      \
+       int ignore;							      \
+       __asm __volatile (LOCK_INSTR "orl %3, (%2)\n\t"			      \
+-			"syscall"					      \
++			STR_ENTER_KERNEL				      \
+ 			: "=m" (futex), "=a" (ignore)			      \
+ 			: "D" (&(futex)), "i" (FUTEX_OWNER_DIED),	      \
+ 			  "S" (__lll_private_flag (FUTEX_WAKE, private)),     \
+@@ -545,7 +546,7 @@
+      register int __nr_move __asm ("r10") = nr_move;			      \
+      register void *__mutex __asm ("r8") = mutex;			      \
+      register int __val __asm ("r9") = val;				      \
+-     __asm __volatile ("syscall"					      \
++     __asm __volatile (STR_ENTER_KERNEL					      \
+ 		       : "=a" (__res)					      \
+ 		       : "0" (__NR_futex), "D" ((void *) ftx),		      \
+ 			 "S" (__lll_private_flag (FUTEX_CMP_REQUEUE,	      \
+@@ -571,7 +572,7 @@
+     if (_tid != 0)							      \
+       __asm __volatile ("xorq %%r10, %%r10\n\t"				      \
+ 			"1:\tmovq %2, %%rax\n\t"			      \
+-			"syscall\n\t"					      \
++			STR_ENTER_KERNEL "\n\t"				      \
+ 			"cmpl $0, (%%rdi)\n\t"				      \
+ 			"jne 1b"					      \
+ 			: "=&a" (__ignore)				      \
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S	2009-12-06 02:07:01.000000000 +0900
+@@ -92,7 +92,7 @@
+ 	jne	2f
+ 
+ 1:	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 2:	movl	%edx, %eax
+ 	xchgl	%eax, (%rdi)	/* NB:	 lock is implied */
+@@ -131,7 +131,7 @@
+ 	jne	2f
+ 
+ 1:	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 2:	movl	%edx, %eax
+ 	xchgl	%eax, (%rdi)	/* NB:	 lock is implied */
+@@ -182,7 +182,7 @@
+ 
+ 1:	movl	$SYS_futex, %eax
+ 	movl	$2, %edx
+-	syscall
++	ENTER_KERNEL
+ 
+ 2:	xchgl	%edx, (%rdi)	/* NB:   lock is implied */
+ 
+@@ -274,7 +274,7 @@
+ 	LOAD_FUTEX_WAIT (%esi)
+ 	movq	%r12, %rdi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	/* NB: %edx == 2 */
+ 	xchgl	%edx, (%r12)
+@@ -331,7 +331,7 @@
+ 	LOAD_PRIVATE_FUTEX_WAKE (%esi)
+ 	movl	$1, %edx	/* Wake one thread.  */
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	popq	%rdx
+ 	cfi_adjust_cfa_offset(-8)
+@@ -361,7 +361,7 @@
+ 	LOAD_FUTEX_WAKE (%esi)
+ 	movl	$1, %edx	/* Wake one thread.  */
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	popq	%rdx
+ 	cfi_adjust_cfa_offset(-8)
+@@ -429,7 +429,7 @@
+ #endif
+ 	movq	%r12, %rdi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	cmpl	$0, (%rdi)
+ 	jne	1f
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevelrobustlock.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevelrobustlock.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevelrobustlock.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/lowlevelrobustlock.S	2009-12-06 02:07:01.000000000 +0900
+@@ -85,7 +85,7 @@
+ 	jnz	2f
+ 
+ 1:	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	movl	(%rdi), %eax
+ 
+@@ -147,7 +147,7 @@
+ 	jnz	6f
+ 
+ 5:	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 	movl	%eax, %ecx
+ 
+ 	movl	(%rdi), %eax
+@@ -257,7 +257,7 @@
+ 	LOAD_FUTEX_WAIT (%esi)
+ 	movq	%r12, %rdi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 	movq	%rax, %rcx
+ 
+ 	movl	(%r12), %eax
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_barrier_wait.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_barrier_wait.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_barrier_wait.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_barrier_wait.S	2009-12-06 02:07:01.000000000 +0900
+@@ -63,7 +63,7 @@
+ #endif
+ 	xorq	%r10, %r10
+ 8:	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	/* Don't return on spurious wakeups.  The syscall does not change
+ 	   any register except %eax so there is no need to reload any of
+@@ -110,7 +110,7 @@
+ 	movl	$FUTEX_WAKE, %esi
+ 	orl	PRIVATE(%rdi), %esi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	/* Increment LEFT.  If this brings the count back to the
+ 	   initial count unlock the object.  */
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_broadcast.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_broadcast.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_broadcast.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_broadcast.S	2009-12-06 02:07:01.000000000 +0900
+@@ -90,7 +90,7 @@
+ 	movl	$SYS_futex, %eax
+ 	movl	$1, %edx
+ 	movl	$0x7fffffff, %r10d
+-	syscall
++	ENTER_KERNEL
+ 
+ 	/* For any kind of error, which mainly is EAGAIN, we try again
+ 	   with WAKE.  The general test also covers running on old
+@@ -106,7 +106,7 @@
+ 	movl	$SYS_futex, %eax
+ 	movl	$1, %edx
+ 	movl	$0x7fffffff, %r10d
+-	syscall
++	ENTER_KERNEL
+ 
+ 	/* For any kind of error, which mainly is EAGAIN, we try again
+ 	   with WAKE.  The general test also covers running on old
+@@ -172,7 +172,7 @@
+ 	orl	$FUTEX_WAKE, %esi
+ #endif
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 	jmp	10b
+ 	.size	__pthread_cond_broadcast, .-__pthread_cond_broadcast
+ versioned_symbol (libpthread, __pthread_cond_broadcast, pthread_cond_broadcast,
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_signal.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_signal.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_signal.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_signal.S	2009-12-06 02:07:01.000000000 +0900
+@@ -80,7 +80,7 @@
+ 	addq	$cond_lock, %r8
+ #endif
+ 	movl	$FUTEX_OP_CLEAR_WAKE_IF_GT_ONE, %r9d
+-	syscall
++	ENTER_KERNEL
+ #if cond_lock != 0
+ 	subq	$cond_lock, %r8
+ #endif
+@@ -97,7 +97,7 @@
+ 	movq	%rcx, %r8
+ 	xorq	%r10, %r10
+ 	movl	(%rdi), %r9d	// XXX Can this be right?
+-	syscall
++	ENTER_KERNEL
+ 
+ 	leaq	-cond_futex(%rdi), %r8
+ 
+@@ -116,7 +116,7 @@
+ 	movl	$SYS_futex, %eax
+ 	/* %rdx should be 1 already from $FUTEX_WAKE_OP syscall.
+ 	movl	$1, %edx  */
+-	syscall
++	ENTER_KERNEL
+ 
+ 	/* Unlock.  */
+ 4:	LOCK
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S	2009-12-06 02:07:01.000000000 +0900
+@@ -182,7 +182,7 @@
+ 	movq	%r12, %rdx
+ 	addq	$cond_futex, %rdi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	movl	$1, %r15d
+ #ifdef __ASSUME_REQUEUE_PI
+@@ -207,7 +207,7 @@
+ 	movq	%r12, %rdx
+ 	addq	$cond_futex, %rdi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 62:	movq	%rax, %r14
+ 
+ 	movl	(%rsp), %edi
+@@ -278,7 +278,7 @@
+ 	orl	$FUTEX_WAKE, %esi
+ #endif
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 	subq	$cond_nwaiters, %rdi
+ 
+ 55:	LOCK
+@@ -457,7 +457,7 @@
+ 	jmp	27f
+ #  endif
+ 26:	movl	$__NR_clock_gettime, %eax
+-	syscall
++	ENTER_KERNEL
+ 27:
+ #  ifndef __ASSUME_POSIX_TIMERS
+ 	cmpq	$-ENOSYS, %rax
+@@ -528,7 +528,7 @@
+ # endif
+ 	addq	$cond_futex, %rdi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 	movq	%rax, %r14
+ 
+ 	movl	(%rsp), %edi
+@@ -725,7 +725,7 @@
+ 	orl	$FUTEX_WAKE, %esi
+ #endif
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 	subq	$cond_nwaiters, %rdi
+ 	movl	$1, %r12d
+ 
+@@ -762,7 +762,7 @@
+ 	orl	$FUTEX_WAKE, %esi
+ #endif
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 5:	movq	16(%rsp), %rdi
+ 	callq	__pthread_mutex_cond_lock
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S	2009-12-06 02:07:01.000000000 +0900
+@@ -135,7 +135,7 @@
+ 
+ 	movl	$(FUTEX_WAIT_REQUEUE_PI|FUTEX_PRIVATE_FLAG), %esi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	movl	$1, %r8d
+ #ifdef __ASSUME_REQUEUE_PI
+@@ -157,7 +157,7 @@
+ #endif
+ 60:	xorl	%r8d, %r8d
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 62:	movl	(%rsp), %edi
+ 	callq	__pthread_disable_asynccancel
+@@ -216,7 +216,7 @@
+ 	orl	$FUTEX_WAKE, %esi
+ #endif
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 	subq	$cond_nwaiters, %rdi
+ 
+ 17:	LOCK
+@@ -414,7 +414,7 @@
+ 	orl	$FUTEX_WAKE, %esi
+ #endif
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 	subq	$cond_nwaiters, %rdi
+ 	movl	$1, %ecx
+ 
+@@ -452,7 +452,7 @@
+ 	orl	$FUTEX_WAKE, %esi
+ #endif
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 5:	movq	16(%rsp), %rdi
+ 	callq	__pthread_mutex_cond_lock
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_once.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_once.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_once.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_once.S	2009-12-06 02:07:01.000000000 +0900
+@@ -91,7 +91,7 @@
+ # endif
+ #endif
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 	jmp	6b
+ 
+ 	/* Preserve the pointer to the control variable.  */
+@@ -124,7 +124,7 @@
+ 	orl	%fs:PRIVATE_FUTEX, %esi
+ #endif
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 4:	addq	$8, %rsp
+ 	cfi_adjust_cfa_offset(-8)
+@@ -156,7 +156,7 @@
+ 	orl	%fs:PRIVATE_FUTEX, %esi
+ #endif
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	movq	%r8, %rdi
+ .LcallUR:
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_rdlock.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_rdlock.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_rdlock.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_rdlock.S	2009-12-06 02:07:01.000000000 +0900
+@@ -80,7 +80,7 @@
+ #endif
+ 	addq	$READERS_WAKEUP, %rdi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	subq	$READERS_WAKEUP, %rdi
+ 
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_timedrdlock.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_timedrdlock.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_timedrdlock.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_timedrdlock.S	2009-12-06 02:07:01.000000000 +0900
+@@ -111,7 +111,7 @@
+ #endif
+ 21:	leaq	READERS_WAKEUP(%r12), %rdi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 	movq	%rax, %rdx
+ 
+ #ifndef __ASSUME_FUTEX_CLOCK_REALTIME
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_timedwrlock.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_timedwrlock.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_timedwrlock.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_timedwrlock.S	2009-12-06 02:07:01.000000000 +0900
+@@ -108,7 +108,7 @@
+ #endif
+ 21:	leaq	WRITERS_WAKEUP(%r12), %rdi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 	movq	%rax, %rdx
+ 
+ #ifndef __ASSUME_FUTEX_CLOCK_REALTIME
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_unlock.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_unlock.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_unlock.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_unlock.S	2009-12-06 02:07:01.000000000 +0900
+@@ -80,7 +80,7 @@
+ #endif
+ 	movl	$SYS_futex, %eax
+ 	movq	%r10, %rdi
+-	syscall
++	ENTER_KERNEL
+ 
+ 	xorl	%eax, %eax
+ 	retq
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_wrlock.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_wrlock.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_wrlock.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_wrlock.S	2009-12-06 02:07:01.000000000 +0900
+@@ -78,7 +78,7 @@
+ #endif
+ 	addq	$WRITERS_WAKEUP, %rdi
+ 	movl	$SYS_futex, %eax
+-	syscall
++	ENTER_KERNEL
+ 
+ 	subq	$WRITERS_WAKEUP, %rdi
+ 
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/sem_post.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/sem_post.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/sem_post.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/sem_post.S	2009-12-06 02:07:01.000000000 +0900
+@@ -53,7 +53,7 @@
+ 	movl	$FUTEX_WAKE, %esi
+ 	orl	PRIVATE(%rdi), %esi
+ 	movl	$1, %edx
+-	syscall
++	ENTER_KERNEL
+ 
+ 	testq	%rax, %rax
+ 	js	1f
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/sem_timedwait.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/sem_timedwait.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/sem_timedwait.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/sem_timedwait.S	2009-12-06 02:07:01.000000000 +0900
+@@ -99,7 +99,7 @@
+ 	orl	PRIVATE(%rdi), %esi
+ 	movl	$SYS_futex, %eax
+ 	xorl	%edx, %edx
+-	syscall
++	ENTER_KERNEL
+ 	movq	%rax, %r9
+ #if VALUE != 0
+ 	leaq	-VALUE(%rdi), %rdi
+@@ -236,7 +236,7 @@
+ # endif
+ 	movl	$SYS_futex, %eax
+ 	xorl	%edx, %edx
+-	syscall
++	ENTER_KERNEL
+ 	movq	%rax, %r14
+ 
+ 	movl	16(%rsp), %edi
+diff -urN glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/sem_wait.S glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/sem_wait.S
+--- glibc-2.11.orig/nptl/sysdeps/unix/sysv/linux/x86_64/sem_wait.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/unix/sysv/linux/x86_64/sem_wait.S	2009-12-06 02:07:01.000000000 +0900
+@@ -82,7 +82,7 @@
+ 	orl	PRIVATE(%rdi), %esi
+ #endif
+ 	xorl	%edx, %edx
+-	syscall
++	ENTER_KERNEL
+ 	movq	%rax, %rcx
+ 
+ 	xchgq	%r8, %rdi
+diff -urN glibc-2.11.orig/nptl/sysdeps/x86_64/pthreaddef.h glibc-2.11/nptl/sysdeps/x86_64/pthreaddef.h
+--- glibc-2.11.orig/nptl/sysdeps/x86_64/pthreaddef.h	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/x86_64/pthreaddef.h	2009-12-06 02:07:01.000000000 +0900
+@@ -40,4 +40,4 @@
+ 
+ /* While there is no such syscall.  */
+ #define __exit_thread_inline(val) \
+-  asm volatile ("syscall" :: "a" (__NR_exit), "D" (val))
++  asm volatile (STR_ENTER_KERNEL :: "a" (__NR_exit), "D" (val))
+diff -urN glibc-2.11.orig/nptl/sysdeps/x86_64/tcb-offsets.sym glibc-2.11/nptl/sysdeps/x86_64/tcb-offsets.sym
+--- glibc-2.11.orig/nptl/sysdeps/x86_64/tcb-offsets.sym	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/x86_64/tcb-offsets.sym	2009-12-06 02:07:01.000000000 +0900
+@@ -12,6 +12,7 @@
+ MULTIPLE_THREADS_OFFSET	offsetof (tcbhead_t, multiple_threads)
+ POINTER_GUARD		offsetof (tcbhead_t, pointer_guard)
+ VGETCPU_CACHE_OFFSET	offsetof (tcbhead_t, vgetcpu_cache)
++SYSINFO_OFFSET		offsetof (tcbhead_t, sysinfo)
+ #ifndef __ASSUME_PRIVATE_FUTEX
+ PRIVATE_FUTEX		offsetof (tcbhead_t, private_futex)
+ #endif
+diff -urN glibc-2.11.orig/nptl/sysdeps/x86_64/tls.h glibc-2.11/nptl/sysdeps/x86_64/tls.h
+--- glibc-2.11.orig/nptl/sysdeps/x86_64/tls.h	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/nptl/sysdeps/x86_64/tls.h	2009-12-06 02:07:01.000000000 +0900
+@@ -20,6 +20,7 @@
+ #ifndef _TLS_H
+ #define _TLS_H	1
+ 
++#include <dl-sysdep.h>
+ #ifndef __ASSEMBLER__
+ # include <asm/prctl.h>	/* For ARCH_SET_FS.  */
+ # include <stdbool.h>
+@@ -143,6 +144,8 @@
+ # define GET_DTV(descr) \
+   (((tcbhead_t *) (descr))->dtv)
+ 
++#define THREAD_SELF_SYSINFO	THREAD_GETMEM (THREAD_SELF, header.sysinfo)
++#define THREAD_SYSINFO(pd)	((pd)->header.sysinfo)
+ 
+ /* Macros to load from and store into segment registers.  */
+ # define TLS_GET_FS() \
+@@ -157,6 +160,30 @@
+ 
+    We have to make the syscall for both uses of the macro since the
+    address might be (and probably is) different.  */
++#if defined NEED_DL_SYSINFO
++# define TLS_INIT_TP(thrdescr, secondcall) \
++  ({ void *_thrdescr = (thrdescr);					      \
++     tcbhead_t *_head = _thrdescr;					      \
++     int _result;							      \
++									      \
++     _head->tcb = _thrdescr;						      \
++     /* For now the thread descriptor is at the same address.  */	      \
++     _head->self = _thrdescr;						      \
++									      \
++     _head->sysinfo = GLRO(dl_sysinfo);					      \
++									      \
++     /* It is a simple syscall to set the %fs value for the thread.  */	      \
++     asm volatile ("callq *%4"						      \
++		   : "=a" (_result)					      \
++		   : "0" ((unsigned long int) __NR_arch_prctl),		      \
++		     "D" ((unsigned long int) ARCH_SET_FS),		      \
++		     "S" (_thrdescr),					      \
++		     "m" (_head->sysinfo)				      \
++		   : "memory", "cc", "r11", "cx");			      \
++									      \
++    _result ? "cannot set %fs base address for thread-local storage" : 0;     \
++  })
++#else
+ # define TLS_INIT_TP(thrdescr, secondcall) \
+   ({ void *_thrdescr = (thrdescr);					      \
+      tcbhead_t *_head = _thrdescr;					      \
+@@ -176,7 +203,7 @@
+ 									      \
+     _result ? "cannot set %fs base address for thread-local storage" : 0;     \
+   })
+-
++#endif
+ 
+ /* Return the address of the dtv for the current thread.  */
+ # define THREAD_DTV() \
+diff -urN glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/clone.S glibc-2.11/sysdeps/unix/sysv/linux/x86_64/clone.S
+--- glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/clone.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/sysdeps/unix/sysv/linux/x86_64/clone.S	2009-12-06 02:07:01.000000000 +0900
+@@ -62,12 +62,23 @@
+ 	jz	SYSCALL_ERROR_LABEL
+ 
+ 	/* Insert the argument onto the new stack.  */
++#ifdef X86_64_USE_VSYSCALL
++	subq	$24,%rsi
++	movq	%rcx,16(%rsi)
++#else
+ 	subq	$16,%rsi
+ 	movq	%rcx,8(%rsi)
++#endif
+ 
+ 	/* Save the function pointer.  It will be popped off in the
+ 	   child in the ebx frobbing below.  */
++#ifdef X86_64_USE_VSYSCALL
++	movq	%rdi,8(%rsi)
++	leaq	L(enter_kernel_end)(%rip),%r10
++	movq	%r10,0(%rsi)
++#else
+ 	movq	%rdi,0(%rsi)
++#endif
+ 
+ 	/* Do the system call.  */
+ 	movq	%rdx, %rdi
+@@ -79,8 +90,8 @@
+ 	/* End FDE now, because in the child the unwind info will be
+ 	   wrong.  */
+ 	cfi_endproc;
+-	syscall
+-
++	ENTER_KERNEL
++L(enter_kernel_end):
+ 	testq	%rax,%rax
+ 	jl	SYSCALL_ERROR_LABEL
+ 	jz	L(thread_start)
+@@ -103,7 +114,7 @@
+ 	movl	$-1, %eax
+ 	jne	2f
+ 	movl	$SYS_ify(getpid), %eax
+-	syscall
++	ENTER_KERNEL
+ 2:	movl	%eax, %fs:PID
+ 	movl	%eax, %fs:TID
+ 1:
+diff -urN glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/getcontext.S glibc-2.11/sysdeps/unix/sysv/linux/x86_64/getcontext.S
+--- glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/getcontext.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/sysdeps/unix/sysv/linux/x86_64/getcontext.S	2009-12-06 02:07:01.000000000 +0900
+@@ -75,7 +75,7 @@
+ #endif
+ 	movl	$_NSIG8,%r10d
+ 	movl	$__NR_rt_sigprocmask, %eax
+-	syscall
++	ENTER_KERNEL
+ 	cmpq	$-4095, %rax		/* Check %rax for error.  */
+ 	jae	SYSCALL_ERROR_LABEL	/* Jump to error handler if error.  */
+ 
+diff -urN glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/setcontext.S glibc-2.11/sysdeps/unix/sysv/linux/x86_64/setcontext.S
+--- glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/setcontext.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/sysdeps/unix/sysv/linux/x86_64/setcontext.S	2009-12-06 02:07:01.000000000 +0900
+@@ -44,7 +44,7 @@
+ 	movl	$SIG_SETMASK, %edi
+ 	movl	$_NSIG8,%r10d
+ 	movl	$__NR_rt_sigprocmask, %eax
+-	syscall
++	ENTER_KERNEL
+ 	popq	%rdi			/* Reload %rdi, adjust stack.  */
+ 	cfi_adjust_cfa_offset(-8)
+ 	cmpq	$-4095, %rax		/* Check %rax for error.  */
+diff -urN glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/sigaction.c glibc-2.11/sysdeps/unix/sysv/linux/x86_64/sigaction.c
+--- glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/sigaction.c	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/sysdeps/unix/sysv/linux/x86_64/sigaction.c	2009-12-06 02:07:01.000000000 +0900
+@@ -86,6 +86,17 @@
+ weak_alias (__libc_sigaction, sigaction)
+ #endif
+ 
++#ifdef X86_64_USE_VSYSCALL
++# ifdef SHARED
++/* XXX : SYSINFO_OFFSET is hard-coded here! */
++#  define ENTER_KERNEL_NO_RETURN "jmp *%fs:0x20"
++# else
++#  define ENTER_KERNEL_NO_RETURN "jmp *_dl_sysinfo"
++# endif
++#else
++# define ENTER_KERNEL_NO_RETURN "syscall"
++#endif
++
+ /* NOTE: Please think twice before making any changes to the bits of
+    code below.  GDB needs some intimate knowledge about it to
+    recognize them as signal trampolines, and make backtraces through
+@@ -130,7 +141,7 @@
+    "	.type __" #name ",@function\n"					\
+    "__" #name ":\n"							\
+    "	movq $" #syscall ", %rax\n"					\
+-   "	syscall\n"							\
++   ENTER_KERNEL_NO_RETURN "\n"						\
+    ".LEND_" #name ":\n"							\
+    ".section .eh_frame,\"a\",@progbits\n"				\
+    ".LSTARTFRAME_" #name ":\n"						\
+diff -urN glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/swapcontext.S glibc-2.11/sysdeps/unix/sysv/linux/x86_64/swapcontext.S
+--- glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/swapcontext.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/sysdeps/unix/sysv/linux/x86_64/swapcontext.S	2009-12-06 02:07:01.000000000 +0900
+@@ -76,7 +76,7 @@
+ 	movl	$SIG_SETMASK, %edi
+ 	movl	$_NSIG8,%r10d
+ 	movl	$__NR_rt_sigprocmask, %eax
+-	syscall
++	ENTER_KERNEL
+ 	cmpq	$-4095, %rax		/* Check %rax for error.  */
+ 	jae	SYSCALL_ERROR_LABEL	/* Jump to error handler if error.  */
+ 
+diff -urN glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/syscall.S glibc-2.11/sysdeps/unix/sysv/linux/x86_64/syscall.S
+--- glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/syscall.S	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/sysdeps/unix/sysv/linux/x86_64/syscall.S	2009-12-06 02:07:01.000000000 +0900
+@@ -35,7 +35,7 @@
+ 	movq %r8, %r10
+ 	movq %r9, %r8
+ 	movq 8(%rsp),%r9	/* arg6 is on the stack.  */
+-	syscall			/* Do the system call.  */
++	ENTER_KERNEL			/* Do the system call.  */
+ 	cmpq $-4095, %rax	/* Check %rax for error.  */
+ 	jae SYSCALL_ERROR_LABEL	/* Jump to error handler if error.  */
+ L(pseudo_end):
+diff -urN glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/sysdep.h glibc-2.11/sysdeps/unix/sysv/linux/x86_64/sysdep.h
+--- glibc-2.11.orig/sysdeps/unix/sysv/linux/x86_64/sysdep.h	2009-10-31 02:17:08.000000000 +0900
++++ glibc-2.11/sysdeps/unix/sysv/linux/x86_64/sysdep.h	2009-12-06 02:07:01.000000000 +0900
+@@ -36,6 +36,13 @@
+ #undef SYS_ify
+ #define SYS_ify(syscall_name)	__NR_##syscall_name
+ 
++#if defined USE_DL_SYSINFO \
++    && (!defined NOT_IN_libc || defined IS_IN_libpthread)
++# define X86_64_USE_VSYSCALL	1
++#else
++# undef X86_64_USE_VSYSCALL
++#endif
++
+ /* This is a kludge to make syscalls.list find these under the names
+    pread and pwrite, since some kernel headers define those names
+    and some define the *64 names for the same system calls.  */
+@@ -168,6 +175,20 @@
+   jmp L(pseudo_end);
+ # endif	/* PIC */
+ 
++
++/* The original calling convention for system calls on Linux/x86-64 is
++   to use syscall.  */
++#ifdef X86_64_USE_VSYSCALL
++# ifdef SHARED
++#  define ENTER_KERNEL call *%fs:SYSINFO_OFFSET
++# else
++#  define ENTER_KERNEL call *_dl_sysinfo
++# endif
++#else
++# define ENTER_KERNEL syscall
++#endif
++
++
+ /* The Linux/x86-64 kernel expects the system call parameters in
+    registers according to the following table:
+ 
+@@ -208,7 +229,7 @@
+ # define DO_CALL(syscall_name, args)		\
+     DOARGS_##args				\
+     movl $SYS_ify (syscall_name), %eax;		\
+-    syscall;
++    ENTER_KERNEL;
+ 
+ # define DOARGS_0 /* nothing */
+ # define DOARGS_1 /* nothing */
+@@ -219,6 +240,18 @@
+ # define DOARGS_6 DOARGS_5
+ 
+ #else	/* !__ASSEMBLER__ */
++
++#ifdef X86_64_USE_VSYSCALL
++# ifdef SHARED
++/* XXX : SYSINFO_OFFSET is hard-coded here! */
++#  define STR_ENTER_KERNEL "call *%%fs:0x20"
++# else
++#  define STR_ENTER_KERNEL "call *_dl_sysinfo"
++# endif
++#else
++# define STR_ENTER_KERNEL "syscall"
++#endif
++
+ /* Define a macro which expands inline into the wrapper code for a system
+    call.  */
+ # undef INLINE_SYSCALL
+@@ -235,6 +268,33 @@
+ # undef INTERNAL_SYSCALL_DECL
+ # define INTERNAL_SYSCALL_DECL(err) do { } while (0)
+ 
++# ifdef X86_64_USE_VSYSCALL
++#  ifdef SHARED
++# define INTERNAL_SYSCALL_NCS(name, err, nr, args...) \
++  ({									      \
++    unsigned long int resultvar;					      \
++    LOAD_ARGS_##nr (args)						      \
++    LOAD_REGS_##nr							      \
++    asm volatile (							      \
++    "call *%%fs:%P2\n\t"						      \
++    : "=a" (resultvar)							      \
++    : "0" (name), "i" (offsetof (tcbhead_t, sysinfo))			      \
++      ASM_ARGS_##nr : "memory", "cc", "r11", "cx");			      \
++    (long int) resultvar; })
++#  else
++# define INTERNAL_SYSCALL_NCS(name, err, nr, args...) \
++  ({									      \
++    unsigned long int resultvar;					      \
++    LOAD_ARGS_##nr (args)						      \
++    LOAD_REGS_##nr							      \
++    asm volatile (							      \
++    "call *_dl_sysinfo\n\t"						      \
++    : "=a" (resultvar)							      \
++    : "0" (name), "i" (offsetof (tcbhead_t, sysinfo))			      \
++      ASM_ARGS_##nr : "memory", "cc", "r11", "cx");			      \
++    (long int) resultvar; })
++#  endif
++# else
+ # define INTERNAL_SYSCALL_NCS(name, err, nr, args...) \
+   ({									      \
+     unsigned long int resultvar;					      \
+@@ -245,6 +305,7 @@
+     : "=a" (resultvar)							      \
+     : "0" (name) ASM_ARGS_##nr : "memory", "cc", "r11", "cx");		      \
+     (long int) resultvar; })
++# endif
+ # undef INTERNAL_SYSCALL
+ # define INTERNAL_SYSCALL(name, err, nr, args...) \
+   INTERNAL_SYSCALL_NCS (__NR_##name, err, nr, ##args)
