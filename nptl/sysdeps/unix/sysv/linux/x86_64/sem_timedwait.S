@@ -99,7 +99,7 @@ sem_timedwait:
 	orl	PRIVATE(%rdi), %esi
 	movl	$SYS_futex, %eax
 	xorl	%edx, %edx
-	syscall
+	ENTER_KERNEL
 	movq	%rax, %r9
 #if VALUE != 0
 	leaq	-VALUE(%rdi), %rdi
@@ -236,7 +236,7 @@ sem_timedwait:
 # endif
 	movl	$SYS_futex, %eax
 	xorl	%edx, %edx
-	syscall
+	ENTER_KERNEL
 	movq	%rax, %r14
 
 	movl	16(%rsp), %edi

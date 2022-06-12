@@ -63,7 +63,7 @@ pthread_barrier_wait:
 #endif
 	xorq	%r10, %r10
 8:	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	/* Don't return on spurious wakeups.  The syscall does not change
 	   any register except %eax so there is no need to reload any of
@@ -110,7 +110,7 @@ pthread_barrier_wait:
 	movl	$FUTEX_WAKE, %esi
 	orl	PRIVATE(%rdi), %esi
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	/* Increment LEFT.  If this brings the count back to the
 	   initial count unlock the object.  */

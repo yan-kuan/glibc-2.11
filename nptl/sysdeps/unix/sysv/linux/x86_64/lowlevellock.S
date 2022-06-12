@@ -92,7 +92,7 @@ __lll_lock_wait_private:
 	jne	2f
 
 1:	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 2:	movl	%edx, %eax
 	xchgl	%eax, (%rdi)	/* NB:	 lock is implied */
@@ -131,7 +131,7 @@ __lll_lock_wait:
 	jne	2f
 
 1:	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 2:	movl	%edx, %eax
 	xchgl	%eax, (%rdi)	/* NB:	 lock is implied */
@@ -182,7 +182,7 @@ __lll_timedlock_wait:
 
 1:	movl	$SYS_futex, %eax
 	movl	$2, %edx
-	syscall
+	ENTER_KERNEL
 
 2:	xchgl	%edx, (%rdi)	/* NB:   lock is implied */
 
@@ -274,7 +274,7 @@ __lll_timedlock_wait:
 	LOAD_FUTEX_WAIT (%esi)
 	movq	%r12, %rdi
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	/* NB: %edx == 2 */
 	xchgl	%edx, (%r12)
@@ -331,7 +331,7 @@ __lll_unlock_wake_private:
 	LOAD_PRIVATE_FUTEX_WAKE (%esi)
 	movl	$1, %edx	/* Wake one thread.  */
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	popq	%rdx
 	cfi_adjust_cfa_offset(-8)
@@ -361,7 +361,7 @@ __lll_unlock_wake:
 	LOAD_FUTEX_WAKE (%esi)
 	movl	$1, %edx	/* Wake one thread.  */
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	popq	%rdx
 	cfi_adjust_cfa_offset(-8)
@@ -429,7 +429,7 @@ __lll_timedwait_tid:
 #endif
 	movq	%r12, %rdi
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	cmpl	$0, (%rdi)
 	jne	1f

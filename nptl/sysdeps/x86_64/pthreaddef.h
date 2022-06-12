@@ -40,4 +40,4 @@
 
 /* While there is no such syscall.  */
 #define __exit_thread_inline(val) \
-  asm volatile ("syscall" :: "a" (__NR_exit), "D" (val))
+  asm volatile (STR_ENTER_KERNEL :: "a" (__NR_exit), "D" (val))

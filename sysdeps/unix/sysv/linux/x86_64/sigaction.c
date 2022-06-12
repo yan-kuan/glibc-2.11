@@ -86,6 +86,17 @@ libc_hidden_weak (__sigaction)
 weak_alias (__libc_sigaction, sigaction)
 #endif
 
+#ifdef X86_64_USE_VSYSCALL
+# ifdef SHARED
+/* XXX : SYSINFO_OFFSET is hard-coded here! */
+#  define ENTER_KERNEL_NO_RETURN "jmp *%fs:0x20"
+# else
+#  define ENTER_KERNEL_NO_RETURN "jmp *_dl_sysinfo"
+# endif
+#else
+# define ENTER_KERNEL_NO_RETURN "syscall"
+#endif
+
 /* NOTE: Please think twice before making any changes to the bits of
    code below.  GDB needs some intimate knowledge about it to
    recognize them as signal trampolines, and make backtraces through
@@ -130,7 +141,7 @@ asm									\
    "	.type __" #name ",@function\n"					\
    "__" #name ":\n"							\
    "	movq $" #syscall ", %rax\n"					\
-   "	syscall\n"							\
+   ENTER_KERNEL_NO_RETURN "\n"						\
    ".LEND_" #name ":\n"							\
    ".section .eh_frame,\"a\",@progbits\n"				\
    ".LSTARTFRAME_" #name ":\n"						\

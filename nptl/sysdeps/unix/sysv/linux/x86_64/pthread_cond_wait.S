@@ -135,7 +135,7 @@ __pthread_cond_wait:
 
 	movl	$(FUTEX_WAIT_REQUEUE_PI|FUTEX_PRIVATE_FLAG), %esi
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	movl	$1, %r8d
 #ifdef __ASSUME_REQUEUE_PI
@@ -157,7 +157,7 @@ __pthread_cond_wait:
 #endif
 60:	xorl	%r8d, %r8d
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 62:	movl	(%rsp), %edi
 	callq	__pthread_disable_asynccancel
@@ -216,7 +216,7 @@ __pthread_cond_wait:
 	orl	$FUTEX_WAKE, %esi
 #endif
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 	subq	$cond_nwaiters, %rdi
 
 17:	LOCK
@@ -414,7 +414,7 @@ __condvar_cleanup1:
 	orl	$FUTEX_WAKE, %esi
 #endif
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 	subq	$cond_nwaiters, %rdi
 	movl	$1, %ecx
 
@@ -452,7 +452,7 @@ __condvar_cleanup1:
 	orl	$FUTEX_WAKE, %esi
 #endif
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 5:	movq	16(%rsp), %rdi
 	callq	__pthread_mutex_cond_lock

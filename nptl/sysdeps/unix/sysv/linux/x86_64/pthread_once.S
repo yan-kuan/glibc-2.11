@@ -91,7 +91,7 @@ __pthread_once:
 # endif
 #endif
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 	jmp	6b
 
 	/* Preserve the pointer to the control variable.  */
@@ -124,7 +124,7 @@ __pthread_once:
 	orl	%fs:PRIVATE_FUTEX, %esi
 #endif
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 4:	addq	$8, %rsp
 	cfi_adjust_cfa_offset(-8)
@@ -156,7 +156,7 @@ clear_once_control:
 	orl	%fs:PRIVATE_FUTEX, %esi
 #endif
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	movq	%r8, %rdi
 .LcallUR:

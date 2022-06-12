@@ -35,7 +35,7 @@ ENTRY (syscall)
 	movq %r8, %r10
 	movq %r9, %r8
 	movq 8(%rsp),%r9	/* arg6 is on the stack.  */
-	syscall			/* Do the system call.  */
+	ENTER_KERNEL			/* Do the system call.  */
 	cmpq $-4095, %rax	/* Check %rax for error.  */
 	jae SYSCALL_ERROR_LABEL	/* Jump to error handler if error.  */
 L(pseudo_end):

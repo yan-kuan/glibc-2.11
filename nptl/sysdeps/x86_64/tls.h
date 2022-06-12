@@ -20,6 +20,7 @@
 #ifndef _TLS_H
 #define _TLS_H	1
 
+#include <dl-sysdep.h>
 #ifndef __ASSEMBLER__
 # include <asm/prctl.h>	/* For ARCH_SET_FS.  */
 # include <stdbool.h>
@@ -143,6 +144,8 @@ typedef struct
 # define GET_DTV(descr) \
   (((tcbhead_t *) (descr))->dtv)
 
+#define THREAD_SELF_SYSINFO	THREAD_GETMEM (THREAD_SELF, header.sysinfo)
+#define THREAD_SYSINFO(pd)	((pd)->header.sysinfo)
 
 /* Macros to load from and store into segment registers.  */
 # define TLS_GET_FS() \
@@ -157,6 +160,30 @@ typedef struct
 
    We have to make the syscall for both uses of the macro since the
    address might be (and probably is) different.  */
+#if defined NEED_DL_SYSINFO
+# define TLS_INIT_TP(thrdescr, secondcall) \
+  ({ void *_thrdescr = (thrdescr);					      \
+     tcbhead_t *_head = _thrdescr;					      \
+     int _result;							      \
+									      \
+     _head->tcb = _thrdescr;						      \
+     /* For now the thread descriptor is at the same address.  */	      \
+     _head->self = _thrdescr;						      \
+									      \
+     _head->sysinfo = GLRO(dl_sysinfo);					      \
+									      \
+     /* It is a simple syscall to set the %fs value for the thread.  */	      \
+     asm volatile ("callq *%4"						      \
+		   : "=a" (_result)					      \
+		   : "0" ((unsigned long int) __NR_arch_prctl),		      \
+		     "D" ((unsigned long int) ARCH_SET_FS),		      \
+		     "S" (_thrdescr),					      \
+		     "m" (_head->sysinfo)				      \
+		   : "memory", "cc", "r11", "cx");			      \
+									      \
+    _result ? "cannot set %fs base address for thread-local storage" : 0;     \
+  })
+#else
 # define TLS_INIT_TP(thrdescr, secondcall) \
   ({ void *_thrdescr = (thrdescr);					      \
      tcbhead_t *_head = _thrdescr;					      \
@@ -176,7 +203,7 @@ typedef struct
 									      \
     _result ? "cannot set %fs base address for thread-local storage" : 0;     \
   })
-
+#endif
 
 /* Return the address of the dtv for the current thread.  */
 # define THREAD_DTV() \

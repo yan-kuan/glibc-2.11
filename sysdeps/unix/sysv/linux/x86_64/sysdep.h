@@ -36,6 +36,13 @@
 #undef SYS_ify
 #define SYS_ify(syscall_name)	__NR_##syscall_name
 
+#if defined USE_DL_SYSINFO \
+    && (!defined NOT_IN_libc || defined IS_IN_libpthread)
+# define X86_64_USE_VSYSCALL	1
+#else
+# undef X86_64_USE_VSYSCALL
+#endif
+
 /* This is a kludge to make syscalls.list find these under the names
    pread and pwrite, since some kernel headers define those names
    and some define the *64 names for the same system calls.  */
@@ -168,6 +175,20 @@
   jmp L(pseudo_end);
 # endif	/* PIC */
 
+
+/* The original calling convention for system calls on Linux/x86-64 is
+   to use syscall.  */
+#ifdef X86_64_USE_VSYSCALL
+# ifdef SHARED
+#  define ENTER_KERNEL call *%fs:SYSINFO_OFFSET
+# else
+#  define ENTER_KERNEL call *_dl_sysinfo
+# endif
+#else
+# define ENTER_KERNEL syscall
+#endif
+
+
 /* The Linux/x86-64 kernel expects the system call parameters in
    registers according to the following table:
 
@@ -208,7 +229,7 @@
 # define DO_CALL(syscall_name, args)		\
     DOARGS_##args				\
     movl $SYS_ify (syscall_name), %eax;		\
-    syscall;
+    ENTER_KERNEL;
 
 # define DOARGS_0 /* nothing */
 # define DOARGS_1 /* nothing */
@@ -219,6 +240,18 @@
 # define DOARGS_6 DOARGS_5
 
 #else	/* !__ASSEMBLER__ */
+
+#ifdef X86_64_USE_VSYSCALL
+# ifdef SHARED
+/* XXX : SYSINFO_OFFSET is hard-coded here! */
+#  define STR_ENTER_KERNEL "call *%%fs:0x20"
+# else
+#  define STR_ENTER_KERNEL "call *_dl_sysinfo"
+# endif
+#else
+# define STR_ENTER_KERNEL "syscall"
+#endif
+
 /* Define a macro which expands inline into the wrapper code for a system
    call.  */
 # undef INLINE_SYSCALL
@@ -235,6 +268,33 @@
 # undef INTERNAL_SYSCALL_DECL
 # define INTERNAL_SYSCALL_DECL(err) do { } while (0)
 
+# ifdef X86_64_USE_VSYSCALL
+#  ifdef SHARED
+# define INTERNAL_SYSCALL_NCS(name, err, nr, args...) \
+  ({									      \
+    unsigned long int resultvar;					      \
+    LOAD_ARGS_##nr (args)						      \
+    LOAD_REGS_##nr							      \
+    asm volatile (							      \
+    "call *%%fs:%P2\n\t"						      \
+    : "=a" (resultvar)							      \
+    : "0" (name), "i" (offsetof (tcbhead_t, sysinfo))			      \
+      ASM_ARGS_##nr : "memory", "cc", "r11", "cx");			      \
+    (long int) resultvar; })
+#  else
+# define INTERNAL_SYSCALL_NCS(name, err, nr, args...) \
+  ({									      \
+    unsigned long int resultvar;					      \
+    LOAD_ARGS_##nr (args)						      \
+    LOAD_REGS_##nr							      \
+    asm volatile (							      \
+    "call *_dl_sysinfo\n\t"						      \
+    : "=a" (resultvar)							      \
+    : "0" (name), "i" (offsetof (tcbhead_t, sysinfo))			      \
+      ASM_ARGS_##nr : "memory", "cc", "r11", "cx");			      \
+    (long int) resultvar; })
+#  endif
+# else
 # define INTERNAL_SYSCALL_NCS(name, err, nr, args...) \
   ({									      \
     unsigned long int resultvar;					      \
@@ -245,6 +305,7 @@
     : "=a" (resultvar)							      \
     : "0" (name) ASM_ARGS_##nr : "memory", "cc", "r11", "cx");		      \
     (long int) resultvar; })
+# endif
 # undef INTERNAL_SYSCALL
 # define INTERNAL_SYSCALL(name, err, nr, args...) \
   INTERNAL_SYSCALL_NCS (__NR_##name, err, nr, ##args)

@@ -26,6 +26,7 @@
 # include <bits/pthreadtypes.h>
 # include <kernel-features.h>
 # include <tcb-offsets.h>
+# include <sysdep.h>
 
 # ifndef LOCK_INSTR
 #  ifdef UP
@@ -213,7 +214,7 @@ LLL_STUB_UNWIND_INFO_END
     register const struct timespec *__to __asm ("r10") = timeout;	      \
     int __status;							      \
     register __typeof (val) _val __asm ("edx") = (val);			      \
-    __asm __volatile ("syscall"						      \
+    __asm __volatile (STR_ENTER_KERNEL					      \
 		      : "=a" (__status)					      \
 		      : "0" (SYS_futex), "D" (futex),			      \
 			"S" (__lll_private_flag (FUTEX_WAIT, private)),	      \
@@ -227,7 +228,7 @@ LLL_STUB_UNWIND_INFO_END
   do {									      \
     int __ignore;							      \
     register __typeof (nr) _nr __asm ("edx") = (nr);			      \
-    __asm __volatile ("syscall"						      \
+    __asm __volatile (STR_ENTER_KERNEL					      \
 		      : "=a" (__ignore)					      \
 		      : "0" (SYS_futex), "D" (futex),			      \
 			"S" (__lll_private_flag (FUTEX_WAKE, private)),	      \
@@ -530,7 +531,7 @@ LLL_STUB_UNWIND_INFO_END
     {									      \
       int ignore;							      \
       __asm __volatile (LOCK_INSTR "orl %3, (%2)\n\t"			      \
-			"syscall"					      \
+			STR_ENTER_KERNEL				      \
 			: "=m" (futex), "=a" (ignore)			      \
 			: "D" (&(futex)), "i" (FUTEX_OWNER_DIED),	      \
 			  "S" (__lll_private_flag (FUTEX_WAKE, private)),     \
@@ -545,7 +546,7 @@ LLL_STUB_UNWIND_INFO_END
      register int __nr_move __asm ("r10") = nr_move;			      \
      register void *__mutex __asm ("r8") = mutex;			      \
      register int __val __asm ("r9") = val;				      \
-     __asm __volatile ("syscall"					      \
+     __asm __volatile (STR_ENTER_KERNEL					      \
 		       : "=a" (__res)					      \
 		       : "0" (__NR_futex), "D" ((void *) ftx),		      \
 			 "S" (__lll_private_flag (FUTEX_CMP_REQUEUE,	      \
@@ -571,7 +572,7 @@ LLL_STUB_UNWIND_INFO_END
     if (_tid != 0)							      \
       __asm __volatile ("xorq %%r10, %%r10\n\t"				      \
 			"1:\tmovq %2, %%rax\n\t"			      \
-			"syscall\n\t"					      \
+			STR_ENTER_KERNEL "\n\t"				      \
 			"cmpl $0, (%%rdi)\n\t"				      \
 			"jne 1b"					      \
 			: "=&a" (__ignore)				      \

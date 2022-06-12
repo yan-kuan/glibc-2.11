@@ -82,7 +82,7 @@ sem_wait:
 	orl	PRIVATE(%rdi), %esi
 #endif
 	xorl	%edx, %edx
-	syscall
+	ENTER_KERNEL
 	movq	%rax, %rcx
 
 	xchgq	%r8, %rdi

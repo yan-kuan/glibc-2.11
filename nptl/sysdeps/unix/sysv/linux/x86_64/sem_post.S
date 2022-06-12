@@ -53,7 +53,7 @@ sem_post:
 	movl	$FUTEX_WAKE, %esi
 	orl	PRIVATE(%rdi), %esi
 	movl	$1, %edx
-	syscall
+	ENTER_KERNEL
 
 	testq	%rax, %rax
 	js	1f

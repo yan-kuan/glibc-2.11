@@ -75,7 +75,7 @@ ENTRY(__getcontext)
 #endif
 	movl	$_NSIG8,%r10d
 	movl	$__NR_rt_sigprocmask, %eax
-	syscall
+	ENTER_KERNEL
 	cmpq	$-4095, %rax		/* Check %rax for error.  */
 	jae	SYSCALL_ERROR_LABEL	/* Jump to error handler if error.  */
 

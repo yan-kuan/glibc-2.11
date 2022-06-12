@@ -111,7 +111,7 @@ pthread_rwlock_timedrdlock:
 #endif
 21:	leaq	READERS_WAKEUP(%r12), %rdi
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 	movq	%rax, %rdx
 
 #ifndef __ASSUME_FUTEX_CLOCK_REALTIME

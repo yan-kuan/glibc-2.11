@@ -78,7 +78,7 @@ __pthread_rwlock_wrlock:
 #endif
 	addq	$WRITERS_WAKEUP, %rdi
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	subq	$WRITERS_WAKEUP, %rdi
 

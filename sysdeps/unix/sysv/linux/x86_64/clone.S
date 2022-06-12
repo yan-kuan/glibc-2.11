@@ -62,12 +62,23 @@ ENTRY (BP_SYM (__clone))
 	jz	SYSCALL_ERROR_LABEL
 
 	/* Insert the argument onto the new stack.  */
+#ifdef X86_64_USE_VSYSCALL
+	subq	$24,%rsi
+	movq	%rcx,16(%rsi)
+#else
 	subq	$16,%rsi
 	movq	%rcx,8(%rsi)
+#endif
 
 	/* Save the function pointer.  It will be popped off in the
 	   child in the ebx frobbing below.  */
+#ifdef X86_64_USE_VSYSCALL
+	movq	%rdi,8(%rsi)
+	leaq	L(enter_kernel_end)(%rip),%r10
+	movq	%r10,0(%rsi)
+#else
 	movq	%rdi,0(%rsi)
+#endif
 
 	/* Do the system call.  */
 	movq	%rdx, %rdi
@@ -79,8 +90,8 @@ ENTRY (BP_SYM (__clone))
 	/* End FDE now, because in the child the unwind info will be
 	   wrong.  */
 	cfi_endproc;
-	syscall
-
+	ENTER_KERNEL
+L(enter_kernel_end):
 	testq	%rax,%rax
 	jl	SYSCALL_ERROR_LABEL
 	jz	L(thread_start)
@@ -103,7 +114,7 @@ L(thread_start):
 	movl	$-1, %eax
 	jne	2f
 	movl	$SYS_ify(getpid), %eax
-	syscall
+	ENTER_KERNEL
 2:	movl	%eax, %fs:PID
 	movl	%eax, %fs:TID
 1:

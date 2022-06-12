@@ -182,7 +182,7 @@ __pthread_cond_timedwait:
 	movq	%r12, %rdx
 	addq	$cond_futex, %rdi
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	movl	$1, %r15d
 #ifdef __ASSUME_REQUEUE_PI
@@ -207,7 +207,7 @@ __pthread_cond_timedwait:
 	movq	%r12, %rdx
 	addq	$cond_futex, %rdi
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 62:	movq	%rax, %r14
 
 	movl	(%rsp), %edi
@@ -278,7 +278,7 @@ __pthread_cond_timedwait:
 	orl	$FUTEX_WAKE, %esi
 #endif
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 	subq	$cond_nwaiters, %rdi
 
 55:	LOCK
@@ -457,7 +457,7 @@ __pthread_cond_timedwait:
 	jmp	27f
 #  endif
 26:	movl	$__NR_clock_gettime, %eax
-	syscall
+	ENTER_KERNEL
 27:
 #  ifndef __ASSUME_POSIX_TIMERS
 	cmpq	$-ENOSYS, %rax
@@ -528,7 +528,7 @@ __pthread_cond_timedwait:
 # endif
 	addq	$cond_futex, %rdi
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 	movq	%rax, %r14
 
 	movl	(%rsp), %edi
@@ -725,7 +725,7 @@ __condvar_cleanup2:
 	orl	$FUTEX_WAKE, %esi
 #endif
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 	subq	$cond_nwaiters, %rdi
 	movl	$1, %r12d
 
@@ -762,7 +762,7 @@ __condvar_cleanup2:
 	orl	$FUTEX_WAKE, %esi
 #endif
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 5:	movq	16(%rsp), %rdi
 	callq	__pthread_mutex_cond_lock

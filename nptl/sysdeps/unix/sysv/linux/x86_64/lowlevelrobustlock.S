@@ -85,7 +85,7 @@ __lll_robust_lock_wait:
 	jnz	2f
 
 1:	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	movl	(%rdi), %eax
 
@@ -147,7 +147,7 @@ __lll_robust_timedlock_wait:
 	jnz	6f
 
 5:	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 	movl	%eax, %ecx
 
 	movl	(%rdi), %eax
@@ -257,7 +257,7 @@ __lll_robust_timedlock_wait:
 	LOAD_FUTEX_WAIT (%esi)
 	movq	%r12, %rdi
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 	movq	%rax, %rcx
 
 	movl	(%r12), %eax

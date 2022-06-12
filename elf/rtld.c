@@ -1372,8 +1372,10 @@ of this helper program; chances are you did not intend to run this program.\n\
 	  /* We have a prelinked DSO preloaded by the system.  */
 	  GLRO(dl_sysinfo_map) = l;
 # ifdef NEED_DL_SYSINFO
+#  if !defined __x86_64__
 	  if (GLRO(dl_sysinfo) == DL_SYSINFO_DEFAULT)
 	    GLRO(dl_sysinfo) = GLRO(dl_sysinfo_dso)->e_entry + l->l_addr;
+#  endif
 # endif
 	}
     }

@@ -80,7 +80,7 @@ __pthread_rwlock_rdlock:
 #endif
 	addq	$READERS_WAKEUP, %rdi
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 
 	subq	$READERS_WAKEUP, %rdi
 

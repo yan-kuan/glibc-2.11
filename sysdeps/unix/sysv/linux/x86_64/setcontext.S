@@ -44,7 +44,7 @@ ENTRY(__setcontext)
 	movl	$SIG_SETMASK, %edi
 	movl	$_NSIG8,%r10d
 	movl	$__NR_rt_sigprocmask, %eax
-	syscall
+	ENTER_KERNEL
 	popq	%rdi			/* Reload %rdi, adjust stack.  */
 	cfi_adjust_cfa_offset(-8)
 	cmpq	$-4095, %rax		/* Check %rax for error.  */

@@ -80,7 +80,7 @@ __pthread_cond_signal:
 	addq	$cond_lock, %r8
 #endif
 	movl	$FUTEX_OP_CLEAR_WAKE_IF_GT_ONE, %r9d
-	syscall
+	ENTER_KERNEL
 #if cond_lock != 0
 	subq	$cond_lock, %r8
 #endif
@@ -97,7 +97,7 @@ __pthread_cond_signal:
 	movq	%rcx, %r8
 	xorq	%r10, %r10
 	movl	(%rdi), %r9d	// XXX Can this be right?
-	syscall
+	ENTER_KERNEL
 
 	leaq	-cond_futex(%rdi), %r8
 
@@ -116,7 +116,7 @@ __pthread_cond_signal:
 	movl	$SYS_futex, %eax
 	/* %rdx should be 1 already from $FUTEX_WAKE_OP syscall.
 	movl	$1, %edx  */
-	syscall
+	ENTER_KERNEL
 
 	/* Unlock.  */
 4:	LOCK

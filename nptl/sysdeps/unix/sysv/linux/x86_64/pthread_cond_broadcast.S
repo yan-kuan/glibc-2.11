@@ -90,7 +90,7 @@ __pthread_cond_broadcast:
 	movl	$SYS_futex, %eax
 	movl	$1, %edx
 	movl	$0x7fffffff, %r10d
-	syscall
+	ENTER_KERNEL
 
 	/* For any kind of error, which mainly is EAGAIN, we try again
 	   with WAKE.  The general test also covers running on old
@@ -106,7 +106,7 @@ __pthread_cond_broadcast:
 	movl	$SYS_futex, %eax
 	movl	$1, %edx
 	movl	$0x7fffffff, %r10d
-	syscall
+	ENTER_KERNEL
 
 	/* For any kind of error, which mainly is EAGAIN, we try again
 	   with WAKE.  The general test also covers running on old
@@ -172,7 +172,7 @@ __pthread_cond_broadcast:
 	orl	$FUTEX_WAKE, %esi
 #endif
 	movl	$SYS_futex, %eax
-	syscall
+	ENTER_KERNEL
 	jmp	10b
 	.size	__pthread_cond_broadcast, .-__pthread_cond_broadcast
 versioned_symbol (libpthread, __pthread_cond_broadcast, pthread_cond_broadcast,

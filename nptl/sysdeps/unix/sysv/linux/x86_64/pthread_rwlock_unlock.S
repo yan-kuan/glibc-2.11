@@ -80,7 +80,7 @@ __pthread_rwlock_unlock:
 #endif
 	movl	$SYS_futex, %eax
 	movq	%r10, %rdi
-	syscall
+	ENTER_KERNEL
 
 	xorl	%eax, %eax
 	retq
